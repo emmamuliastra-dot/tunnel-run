@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Tunnel Run</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; background: #1d1a24; overflow: hidden;
+    overscroll-behavior: none; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  body { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  canvas { display: block; image-rendering: crisp-edges; image-rendering: pixelated; }
+  #hint { display: none; margin-top: 8px; color: #b9a8c9; font: 12px/1.4 ui-monospace, Menlo, monospace; text-align: center; pointer-events: none; }
+  @media (orientation: portrait) { #hint { display: block; } }
+  /* invisible element used only to read the device safe-area insets (notch, home bar) */
+  #safe { position: fixed; top: 0; left: 0; visibility: hidden; pointer-events: none;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hint">Rotate your phone sideways for a bigger view</div>
+<div id="safe"></div>
+
+<script>
+'use strict';
+
+/* =====================================================================
+   CONFIG – tweak everything here
+   ===================================================================== */
+
+// --- Tilesheet (Kenney, 8px tiles with 1px spacing, 15 x 10 grid) ---
+// The tilesheet is embedded below as base64, so this one file is all you need.
+// (To use a different sheet, replace SHEET_DATA with '' and put tilesheet.png next to this file.)
+const SHEET_FILE = 'tilesheet.png';
+const SHEET_DATA = 'data:image/png;base64,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';
+const TILE = 8;
+const SPACING = 1;
+const STEP = TILE + SPACING;
+
+// --- Tile mapping: [col, row], counted from 0 at the top-left. ---
+// Open the page with ?sheet on the end of the URL to see every tile with its [col,row].
+// Lists of tiles are animation frames (or random variants for "rock").
+const TILES = {
+  player:       [[0, 6], [1, 6]],   // red character, two run frames
+  playerJump:   [2, 6],             // red character, in the air
+  blobA:        [[7, 7], [8, 7]],   // navy horned blob, 2 frames
+  blobB:        [[9, 7], [10, 7]],  // navy horned blob (other type), 2 frames
+  spikes:       [[0, 5]],           // grey floor spikes
+  rock:         [[2, 0], [2, 1], [2, 2]], // dark grey rock for ceiling and floor
+  background:   [0, 0],             // flat peach tile
+  coin:         [13, 5],            // orange ring
+  heartFull:    [12, 8],
+  heartEmpty:   [14, 8],
+  doorTL: [11, 6], doorTR: [12, 6], // blue arched door (2 x 2 tiles)
+  doorBL: [11, 7], doorBR: [12, 7],
+  times:        [10, 8],            // the little "x" symbol
+  digitRow:     8                   // digits 0-9 sit in columns 0-9 of this row
+};
+const OBSTACLE_TYPES = [TILES.blobA, TILES.blobB, TILES.spikes];
+// --- Obstacle variety: low (1 tile), tall (2 stacked tiles), wide (2 side by side).
+// The chance of each rises from the first value (start of level) to the second (just before the door).
+const TALL_CHANCE = [0.15, 0.40];
+const WIDE_CHANCE = [0.05, 0.25];
+const EXTRA_GAP_AFTER_BIG = 12;   // extra breathing room after a tall or wide obstacle
+const GAP_SHRINK = 30;            // the longest gap shrinks by this much by the end of the level
+const EDGE_COLOR = '#ffa400';       // thin orange edge on the rock surfaces
+
+// --- View: 24 x 11 tiles = 192 x 88, about the same shape as an iPhone in landscape ---
+const VIEW_W = 192;
+const VIEW_H = 88;
+const CEIL_ROWS = 2;
+const FLOOR_ROWS = 2;
+const CEIL_Y = CEIL_ROWS * TILE;               // bottom of the ceiling (y = 16)
+const FLOOR_Y = VIEW_H - FLOOR_ROWS * TILE;    // top of the floor (y = 72)
+const HUD_Y = CEIL_Y + 2;                      // hearts and coin counter sit just under the ceiling
+
+// --- Movement (pixels and seconds, in the 192 x 88 view) ---
+const RUN_SPEED = 56;          // px per second, constant auto-run
+const GRAVITY = 800;           // px per second squared
+const JUMP_SPEED = 225;        // initial upward speed (peak is about 32px high). Raise it to make tall/wide obstacles easier
+const JUMP_BUFFER = 0.12;      // a tap this soon before landing still counts
+const PLAYER_SCREEN_X = 40;    // where the player sits on screen
+
+// --- Level ---
+const LEVEL_SECONDS = 35;                       // about how long a clean run takes
+const LEVEL_LENGTH = RUN_SPEED * LEVEL_SECONDS; // door position in world px
+const DOOR_X = LEVEL_LENGTH;
+const FIRST_OBSTACLE_X = 180;   // grace period at the start
+const DOOR_CLEARANCE = 100;     // no obstacles this close to the door
+const MIN_GAP = 72;             // closest spacing between obstacles (start to start)
+const MAX_GAP = 120;
+
+// --- Lives ---
+const START_LIVES = 3;
+const INVINCIBLE_TIME = 1.0;
+
+// --- Hitboxes (inset from the 8x8 sprite, so hits feel fair) ---
+const PLAYER_BOX = { l: 1, r: 7, h: 6 };   // x range in sprite, height above feet
+const OBSTACLE_BOX = { l: 1, r: 7, h: 5 };
+
+/* =====================================================================
+   SETUP
+   ===================================================================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+canvas.width = VIEW_W;
+canvas.height = VIEW_H;
+ctx.imageSmoothingEnabled = false;
+
+const sheet = new Image();
+let sheetReady = false, sheetError = false;
+const DEBUG_SHEET = /[?&]sheet/.test(location.search);
+
+function drawTile(col, row, dx, dy, scale = 1) {
+  ctx.drawImage(sheet, col * STEP, row * STEP, TILE, TILE,
+    Math.round(dx), Math.round(dy), TILE * scale, TILE * scale);
+}
+const drawT = (t, dx, dy) => drawTile(t[0], t[1], dx, dy);
+
+/* ---- Crisp pixel text (letters are not in the sheet, so a font is thresholded to hard pixels) ---- */
+const textCache = new Map();
+const measureCtx = document.createElement('canvas').getContext('2d');
+const SS = 4; // text is drawn 4x bigger, shrunk, then thresholded: gives cleaner hard-pixel letters
+function pixelText(str, color, size) {
+  const key = str + '|' + color + '|' + size;
+  let c = textCache.get(key);
+  if (c) return c;
+  const fontAt = px => `bold ${px}px ui-monospace, Menlo, Consolas, "Courier New", monospace`;
+  measureCtx.font = fontAt(size * SS);
+  const w = Math.ceil(measureCtx.measureText(str).width / SS) + 2;
+  const h = Math.ceil(size * 1.3);
+  const big = document.createElement('canvas');
+  big.width = w * SS; big.height = h * SS;
+  const gb = big.getContext('2d');
+  gb.font = fontAt(size * SS); gb.textBaseline = 'top'; gb.fillStyle = color;
+  gb.fillText(str, SS, SS);
+  c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(big, 0, 0, w, h);
+  const img = g.getImageData(0, 0, w, h);
+  for (let i = 3; i < img.data.length; i += 4) img.data[i] = img.data[i] >= 100 ? 255 : 0;
+  g.putImageData(img, 0, 0);
+  textCache.set(key, c);
+  return c;
+}
+function drawText(str, cx, y, size = 8, color = '#fff4e6', shadow = '#2a2233') {
+  const t = pixelText(str, color, size);
+  const x = Math.round(cx - t.width / 2);
+  if (shadow) ctx.drawImage(pixelText(str, shadow, size), x + 1, y + 1);
+  ctx.drawImage(t, x, y);
+}
+
+/* ---- Digits drawn from the sheet ---- */
+function drawNumberRight(n, xRight, y) {
+  const s = String(n);
+  for (let i = s.length - 1, x = xRight - TILE; i >= 0; i--, x -= TILE) {
+    drawTile(+s[i], TILES.digitRow, x, y);
+  }
+}
+
+/* =====================================================================
+   RESIZE – integer pixel scaling, respects the iPhone notch and home bar
+   ===================================================================== */
+const safeEl = document.getElementById('safe');
+const hintEl = document.getElementById('hint');
+function resize() {
+  const cs = getComputedStyle(safeEl);
+  const left = parseFloat(cs.paddingLeft) || 0, right = parseFloat(cs.paddingRight) || 0;
+  const top = parseFloat(cs.paddingTop) || 0, bottom = parseFloat(cs.paddingBottom) || 0;
+  const hintH = hintEl.offsetParent ? hintEl.offsetHeight + 8 : 0;
+  const availW = window.innerWidth - left - right;
+  const availH = window.innerHeight - top - bottom - hintH;
+  const dpr = window.devicePixelRatio || 1;
+  let s = Math.min(availW / VIEW_W, availH / VIEW_H);
+  // snap to a whole number of device pixels so every game pixel is the same size
+  s = Math.floor(s * dpr) >= dpr ? Math.floor(s * dpr) / dpr : s;
+  canvas.style.width = (VIEW_W * s) + 'px';
+  canvas.style.height = (VIEW_H * s) + 'px';
+  if (DEBUG_SHEET) layoutSheetViewer();
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', resize);
+
+/* =====================================================================
+   GAME STATE
+   ===================================================================== */
+let state = 'loading';     // loading | title | playing | gameover | win
+let stateTime = 0;
+let game = null;
+
+function setState(s) { state = s; stateTime = 0; }
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+// Builds one obstacle out of 8x8 tiles. Hitbox size follows the number of tiles.
+function makeObstacle(x, progress) {
+  const r = Math.random();
+  const pTall = lerp(TALL_CHANCE[0], TALL_CHANCE[1], progress);
+  const pWide = lerp(WIDE_CHANCE[0], WIDE_CHANCE[1], progress);
+  const kind = r < pTall ? 'tall' : r < pTall + pWide ? 'wide' : 'low';
+  const pick = () => OBSTACLE_TYPES[Math.floor(Math.random() * OBSTACLE_TYPES.length)];
+  const cells = [];   // row 0 is the bottom row
+  let cols = 1, rows = 1;
+  if (kind === 'tall') {
+    rows = 2;
+    cells.push({ dx: 0, row: 0, frames: pick() }, { dx: 0, row: 1, frames: pick() });
+  } else if (kind === 'wide') {
+    cols = 2;
+    const f = pick();
+    cells.push({ dx: 0, row: 0, frames: f }, { dx: TILE, row: 0, frames: f });
+  } else {
+    cells.push({ dx: 0, row: 0, frames: pick() });
+  }
+  return {
+    x, kind, cols, rows, cells, hit: false,
+    hitL: OBSTACLE_BOX.l,
+    hitR: OBSTACLE_BOX.r + (cols - 1) * TILE,
+    hitH: OBSTACLE_BOX.h + (rows - 1) * TILE
+  };
+}
+
+function buildLevel() {
+  const obstacles = [], pickups = [];
+  const lastX = DOOR_X - DOOR_CLEARANCE;
+  let x = FIRST_OBSTACLE_X;
+  while (x <= lastX) {
+    const progress = (x - FIRST_OBSTACLE_X) / (lastX - FIRST_OBSTACLE_X);
+    const o = makeObstacle(x, progress);
+    obstacles.push(o);
+    // an arc of coins over the obstacle, higher over tall ones and wider over wide ones
+    const cx = x + o.cols * TILE / 2;
+    const peak = 21 + 6 * (o.rows - 1);
+    const spread = 10 + 4 * (o.cols - 1);
+    [[-spread, peak - 7], [0, peak], [spread, peak - 7]].forEach(([dx, hc]) =>
+      pickups.push({ x: cx + dx, hc, taken: false }));
+    const big = o.kind === 'low' ? 0 : EXTRA_GAP_AFTER_BIG;
+    const gap = rand(MIN_GAP, MAX_GAP - GAP_SHRINK * progress) + big;
+    // coins on the floor between obstacles
+    if (Math.random() < 0.6) {
+      const mid = cx + gap / 2;
+      pickups.push({ x: mid - 6, hc: 5, taken: false }, { x: mid + 6, hc: 5, taken: false });
+    }
+    x += gap;
+  }
+  return { obstacles, pickups };
+}
+
+function newGame() {
+  const lv = buildLevel();
+  game = {
+    x: 0, h: 0, vy: 0, onGround: true, buffer: 0,
+    lives: START_LIVES, invuln: 0, coins: 0, time: 0, finalTime: 0, animT: 0,
+    obstacles: lv.obstacles, pickups: lv.pickups, totalCoins: lv.pickups.length
+  };
+}
+
+function startGame() { newGame(); setState('playing'); }
+
+function doJump() {
+  if (game.onGround) { game.vy = JUMP_SPEED; game.onGround = false; }
+}
+
+/* =====================================================================
+   INPUT – pointer events cover mouse and touch; Space/Up for desktop testing
+   ===================================================================== */
+function onPress(e) {
+  e.preventDefault();
+  if (state === 'title') startGame();
+  else if (state === 'playing') {
+    if (game.onGround) doJump(); else game.buffer = JUMP_BUFFER;
+  } else if ((state === 'gameover' || state === 'win') && stateTime > 0.5) startGame();
+}
+window.addEventListener('pointerdown', onPress, { passive: false });
+window.addEventListener('keydown', e => {
+  if ((e.code === 'Space' || e.code === 'ArrowUp') && !e.repeat) onPress(e);
+});
+// stop iOS page scroll, rubber-banding and pinch zoom
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+['gesturestart', 'gesturechange', 'gestureend', 'dblclick', 'contextmenu'].forEach(ev =>
+  document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
+
+/* =====================================================================
+   UPDATE
+   ===================================================================== */
+function overlap(a0, a1, b0, b1) { return a0 < b1 && b0 < a1; }
+
+function update(dt) {
+  stateTime += dt;
+  if (!game) return;
+  game.animT += dt;
+  if (state !== 'playing') return;
+  const g = game;
+
+  g.time += dt;
+  g.x += RUN_SPEED * dt;
+  if (g.invuln > 0) g.invuln -= dt;
+
+  // jump physics (h = height of the feet above the floor)
+  g.vy -= GRAVITY * dt;
+  g.h += g.vy * dt;
+  if (g.h <= 0) { g.h = 0; g.vy = 0; g.onGround = true; }
+  if (g.buffer > 0) {
+    g.buffer -= dt;
+    if (g.onGround) { doJump(); g.buffer = 0; }
+  }
+
+  // player box in world space
+  const pL = g.x + PLAYER_BOX.l, pR = g.x + PLAYER_BOX.r;
+  const pBottom = g.h, pTop = g.h + PLAYER_BOX.h;
+
+  // obstacles
+  for (const o of g.obstacles) {
+    if (o.hit || o.x < g.x - 24 || o.x > g.x + 16) continue;
+    if (overlap(pL, pR, o.x + o.hitL, o.x + o.hitR) &&
+        overlap(pBottom, pTop, 0, o.hitH)) {
+      o.hit = true;
+      if (g.invuln <= 0) {
+        g.lives--;
+        g.invuln = INVINCIBLE_TIME;
+        if (g.lives <= 0) { g.lives = 0; setState('gameover'); return; }
+      }
+    }
+  }
+
+  // coins (centre at height hc above the floor, 6x6 box)
+  for (const c of g.pickups) {
+    if (c.taken || c.x < g.x - 12 || c.x > g.x + 16) continue;
+    if (overlap(pL, pR, c.x - 3, c.x + 3) && overlap(pBottom, pTop, c.hc - 3, c.hc + 3)) {
+      c.taken = true; g.coins++;
+    }
+  }
+
+  // reached the door
+  if (g.x + TILE >= DOOR_X + 2) {
+    g.finalTime = g.time;
+    setState('win');
+  }
+}
+
+/* =====================================================================
+   RENDER
+   ===================================================================== */
+function rockTile(col, row) {
+  const h = (Math.imul(col, 73856093) ^ Math.imul(row, 19349663)) >>> 0;
+  return TILES.rock[h % TILES.rock.length];
+}
+
+function drawScene() {
+  const g = game;
+  const camX = Math.round(g.x - PLAYER_SCREEN_X);
+
+  // peach background
+  for (let r = CEIL_ROWS; r < VIEW_H / TILE - FLOOR_ROWS; r++)
+    for (let c = 0; c < VIEW_W / TILE; c++) drawT(TILES.background, c * TILE, r * TILE);
+
+  // rock ceiling and floor (scrolling)
+  const c0 = Math.floor(camX / TILE);
+  const cols = VIEW_W / TILE + 2;
+  for (let i = 0; i < cols; i++) {
+    const col = c0 + i, x = col * TILE - camX;
+    for (let r = 0; r < CEIL_ROWS; r++) drawT(rockTile(col, r), x, r * TILE);
+    for (let r = 0; r < FLOOR_ROWS; r++) {
+      const row = VIEW_H / TILE - FLOOR_ROWS + r;
+      drawT(rockTile(col, row), x, row * TILE);
+    }
+  }
+  ctx.fillStyle = EDGE_COLOR;
+  ctx.fillRect(0, CEIL_Y - 1, VIEW_W, 1);
+  ctx.fillRect(0, FLOOR_Y, VIEW_W, 1);
+
+  // door at the end of the tunnel
+  const dx = DOOR_X - camX, dy = FLOOR_Y - 2 * TILE;
+  if (dx < VIEW_W && dx > -2 * TILE) {
+    drawT(TILES.doorTL, dx, dy); drawT(TILES.doorTR, dx + TILE, dy);
+    drawT(TILES.doorBL, dx, dy + TILE); drawT(TILES.doorBR, dx + TILE, dy + TILE);
+  }
+
+  // coins
+  for (const c of g.pickups) {
+    const sx = c.x - camX;
+    if (c.taken || sx < -TILE || sx > VIEW_W + TILE) continue;
+    drawT(TILES.coin, sx - TILE / 2, FLOOR_Y - c.hc - TILE / 2);
+  }
+
+  // obstacles (two-frame animation)
+  const frameIdx = Math.floor(g.animT * 4);
+  for (const o of g.obstacles) {
+    const sx = o.x - camX;
+    if (sx < -2 * TILE || sx > VIEW_W + TILE) continue;
+    for (const c of o.cells)
+      drawT(c.frames[(frameIdx + c.row) % c.frames.length], sx + c.dx, FLOOR_Y - TILE * (c.row + 1));
+  }
+
+  // player (hidden once they walk through the door)
+  if (state !== 'win') {
+    const flashHidden = g.invuln > 0 && Math.floor(g.invuln * 12) % 2 === 0;
+    if (!flashHidden) {
+      const tile = g.onGround
+        ? TILES.player[Math.floor(g.animT * 8) % TILES.player.length]
+        : TILES.playerJump;
+      drawT(tile, PLAYER_SCREEN_X, FLOOR_Y - TILE - g.h);
+    }
+  }
+}
+
+function drawHUD() {
+  const g = game;
+  // hearts, top left (on the peach strip under the ceiling)
+  for (let i = 0; i < START_LIVES; i++)
+    drawT(i < g.lives ? TILES.heartFull : TILES.heartEmpty, 4 + i * (TILE + 1), HUD_Y);
+  // coin counter, top right
+  drawNumberRight(g.coins, VIEW_W - 4, HUD_Y);
+  drawT(TILES.times, VIEW_W - 4 - TILE * (String(g.coins).length + 1), HUD_Y);
+  drawT(TILES.coin, VIEW_W - 4 - TILE * (String(g.coins).length + 2), HUD_Y);
+}
+
+function drawPanel() {
+  ctx.fillStyle = 'rgba(29, 26, 36, 0.78)';
+  ctx.fillRect(24, 17, VIEW_W - 48, 54);
+}
+const blink = () => Math.floor(performance.now() / 500) % 2 === 0;
+
+function render() {
+  if (sheetError) {
+    ctx.fillStyle = '#1d1a24'; ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    drawText('Missing ' + SHEET_FILE, VIEW_W / 2, 30, 9, '#ff8a8a', null);
+    drawText('Put it next to this file', VIEW_W / 2, 46, 9, '#b9a8c9', null);
+    return;
+  }
+  if (!sheetReady || !game) { ctx.fillStyle = '#1d1a24'; ctx.fillRect(0, 0, VIEW_W, VIEW_H); return; }
+
+  drawScene();
+  if (state === 'playing') drawHUD();
+
+  const cx = VIEW_W / 2;
+  if (state === 'title') {
+    drawPanel();
+    drawText('Tunnel Run', cx, 19, 13);
+    drawText('By Emma', cx, 34, 9, '#ffd9b3');
+    drawText('Tap to jump', cx, 46, 9, '#b9a8c9');
+    if (blink()) drawText('Tap to start', cx, 58, 10, '#ffa400');
+  } else if (state === 'gameover') {
+    drawPanel();
+    drawText('Game over', cx, 22, 13, '#ff6b81');
+    drawText('Coins: ' + game.coins, cx, 40, 10, '#ffd9b3');
+    if (blink() && stateTime > 0.5) drawText('Tap to retry', cx, 54, 10, '#ffa400');
+  } else if (state === 'win') {
+    drawPanel();
+    drawText('You made it!', cx, 20, 13, '#7be0ff');
+    drawText('Time: ' + game.finalTime.toFixed(1) + 's', cx, 37, 10, '#ffd9b3');
+    drawText('Coins: ' + game.coins + '/' + game.totalCoins, cx, 48, 10, '#ffd9b3');
+    if (blink() && stateTime > 0.5) drawText('Tap to play again', cx, 59, 10, '#ffa400');
+  }
+}
+
+/* =====================================================================
+   MAIN LOOP (delta-time based, capped so a tab switch can't cause a jump)
+   ===================================================================== */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.max(0, Math.min((now - last) / 1000, 1 / 30)); // never negative (first frame can report an earlier timestamp)
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(frame);
+}
+
+/* =====================================================================
+   TILE VIEWER – open the page with ?sheet to see every tile's [col,row]
+   ===================================================================== */
+function layoutSheetViewer() {
+  const v = document.getElementById('sheetView');
+  if (!v) return;
+  const s = Math.max(1, Math.floor(Math.min(window.innerWidth / (15 * STEP), window.innerHeight / (10 * STEP))));
+  v.width = 15 * STEP * s; v.height = 10 * STEP * s;
+  const g = v.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#3a8fd8'; g.fillRect(0, 0, v.width, v.height);
+  g.drawImage(sheet, 0, 0, 15 * STEP, 10 * STEP, 0, 0, v.width, v.height);
+  g.strokeStyle = 'rgba(255,255,255,0.6)'; g.lineWidth = 1;
+  g.font = `${Math.max(8, Math.floor(STEP * s / 4))}px monospace`;
+  g.textBaseline = 'top';
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 15; c++) {
+    g.strokeRect(c * STEP * s + 0.5, r * STEP * s + 0.5, STEP * s, STEP * s);
+    const label = c + ',' + r;
+    g.fillStyle = '#000'; g.fillText(label, c * STEP * s + 3, r * STEP * s + 3);
+    g.fillStyle = '#fff'; g.fillText(label, c * STEP * s + 2, r * STEP * s + 2);
+  }
+}
+function showSheetViewer() {
+  canvas.style.display = 'none';
+  hintEl.style.display = 'none';
+  const v = document.createElement('canvas');
+  v.id = 'sheetView';
+  v.style.imageRendering = 'pixelated';
+  document.body.appendChild(v);
+  layoutSheetViewer();
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+sheet.onload = () => {
+  sheetReady = true;
+  if (DEBUG_SHEET) { showSheetViewer(); return; }
+  newGame();
+  setState('title');
+};
+sheet.onerror = () => { sheetError = true; };
+sheet.src = SHEET_DATA || SHEET_FILE;
+
+resize();
+if (!DEBUG_SHEET) requestAnimationFrame(frame);
+</script>
+</body>
+</html>
